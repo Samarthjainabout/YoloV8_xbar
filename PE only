@@ -1,0 +1,88 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def split_16bit(x):
+    """
+    Splits a 16-bit integer into four 4-bit nibbles.
+    Returns a list: [nibble0 (MSB), nibble1, nibble2, nibble3 (LSB)]
+    """
+    return [ (x >> 12) & 0xF, (x >> 8) & 0xF, (x >> 4) & 0xF, x & 0xF ]
+
+# ------------------------------------------------------------------------------
+# Parameters:
+#   - 32 rows (each row gets one 16-bit input)
+#   - Each row has 8 weight cells (each weight cell is a 16-bit value)
+#   - Each weight cell is stored in the crossbar as 4 consecutive columns.
+# ------------------------------------------------------------------------------
+num_rows = 32
+num_weight_cells = 8
+num_crossbar_cols = num_weight_cells * 4  # 32 columns
+
+# ------------------------------------------------------------------------------
+# Generate and print the unsplit weight array (32 rows x 8 weight cells)
+# ------------------------------------------------------------------------------
+np.random.seed(42)  # For reproducibility
+weight_array = np.random.randint(0, 0x10000, size=(num_rows, num_weight_cells), dtype=np.uint16)
+
+print("Original Unsplit Weight Array (32 rows x 8 weight cells):")
+for i in range(num_rows):
+    row_str = ", ".join(hex(int(w)) for w in weight_array[i])
+    print(f"Row {i}: {row_str}")
+
+# ------------------------------------------------------------------------------
+# Map the unsplit weights onto the crossbar by splitting each 16-bit weight into 4 nibbles.
+# The crossbar is a 32 x 32 array. For each row i and weight cell j,
+# the 4 nibbles are stored in columns j*4 to j*4+3.
+# ------------------------------------------------------------------------------
+crossbar = np.zeros((num_rows, num_crossbar_cols), dtype=np.int64)
+for i in range(num_rows):
+    for j in range(num_weight_cells):
+        nibbles = split_16bit(int(weight_array[i, j]))
+        crossbar[i, j*4:(j+1)*4] = nibbles
+
+# ------------------------------------------------------------------------------
+# Generate a 16-bit input for each row.
+# ------------------------------------------------------------------------------
+input_stream = np.random.randint(0, 0x10000, size=(num_rows,), dtype=np.uint16)
+print("\nInput Stream (16-bit per row):")
+for i, x in enumerate(input_stream):
+    print(f"Row {i}: {hex(int(x))} -> Nibbles: {split_16bit(int(x))}")
+
+# ------------------------------------------------------------------------------
+# Full MAC Computation with Cross Terms:
+#
+# For each row and for each weight cell, we now compute the full 16-bit multiplication:
+#
+#     Product = sum_{i=0}^3 sum_{j=0}^3  (x_i * w_j) << (4*((3-i) + (3-j)))
+#
+# where:
+#   - For the current row, input_nibs = [x0, x1, x2, x3] (with x0 = MSB)
+#   - For a given weight cell in that row, weight_nibs = [w0, w1, w2, w3] (w0 = MSB)
+#
+# In a physical crossbar, to compute all 16 combinations you’d need additional routing cycles.
+# Here we simulate that with nested loops.
+# ------------------------------------------------------------------------------
+# Use int64 for the accumulator so that overflow does not occur.
+final_weight_cell_outputs = np.zeros(num_weight_cells, dtype=np.int64)
+
+for row in range(num_rows):
+    # Get the input nibble breakdown for this row (as a Python list of ints)
+    input_nibs = split_16bit(int(input_stream[row]))
+    for cell in range(num_weight_cells):
+        # Get the weight nibble breakdown for this weight cell
+        weight_nibs = split_16bit(int(weight_array[row, cell]))
+        product = 0  # Use a Python int (arbitrary precision)
+        # Loop over all 16 nibble combinations
+        for i in range(4):      # input nibble index (0 = MSB, 3 = LSB)
+            for j in range(4):  # weight nibble index (0 = MSB, 3 = LSB)
+                # Compute the effective shift: each nibble has significance 4 bits.
+                shift = (4 * (3 - i)) + (4 * (3 - j))
+                product += (input_nibs[i] * weight_nibs[j]) << shift
+        final_weight_cell_outputs[cell] += product
+
+print("\nFinal MAC outputs per weight cell (full multiplication including cross terms):")
+for j, output in enumerate(final_weight_cell_outputs):
+    print(f"Weight Cell {j}: {output} (hex: {hex(output)})")
+
+# ------------------------------------------------------------------------------
+# (Optional) Visualization:

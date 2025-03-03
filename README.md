@@ -7,14 +7,14 @@ Total Clock Cycles per Full 16-bit MAC: 16 clocks
 How It Works in the Crossbar:
 In each clock cycle, every row applies a 4 bit nibble to its weights. Over 16 cycles, you cover every combination of input nibble and weight nibble (the 4×4 grid of combinations), thereby including all the cross terms needed for an exact 16 bit multiplication.
 
-Compute-to-Bandwidth Analysis
-•	Each PE handles ~1/8th of total workload (~119 GFLOPs/s per PE at 8 PEs).
-•	Naïve peak bandwidth demand (if no data reuse) ~1.9 TB/s (unrealistic; mitigated by data reuse and on-chip buffering).
-•	Practical data movement per inference:
-o	Weights: ~11.2 MB (preloaded in SRAM, minimal traffic during inference)
-o	Intermediate data/Inference: ~5 MB per inference (dominant NoC traffic)
-o	Sustained per-PE bandwidth requirement: ~1-2 GB/s (Due to bursts)
-o	Peak NoC bandwidth per link (for burst scenarios): ~10-20 GB/s
+Compute-to-Bandwidth Analysis \n
+•	Each PE handles ~1/8th of total workload (~119 GFLOPs/s per PE at 8 PEs). \n
+•	Naïve peak bandwidth demand (if no data reuse) ~1.9 TB/s (unrealistic; mitigated by data reuse and on-chip buffering). \n
+•	Practical data movement per inference: \n
+o	Weights: ~11.2 MB (preloaded in SRAM, minimal traffic during inference) \n
+o	Intermediate data/Inference: ~5 MB per inference (dominant NoC traffic) \n
+o	Sustained per-PE bandwidth requirement: ~1-2 GB/s (Due to bursts) \n
+o	Peak NoC bandwidth per link (for burst scenarios): ~10-20 GB/s \n
 
 
 Below is an illustrative end-to-end example showing how you might integrate the PE crossbar code (for 16‑bit nibble‑based multiplication) into a pipelined YOLOv8s inference flow on a system with multiple PEs, static XY routing, and a 2D mesh topology. Because a true YOLOv8s implementation is very large (dozens of layers, with residual connections and multi‑scale heads), the code below is a conceptual / toy prototype. It demonstrates how pipeline scheduling (Stages S0–S4) can be combined with PE crossbar multiplication in a manner that meets the approximate target of ~30 ms latency for 640×640 input, given 5–8 PEs, 500 MHz–1 GHz clock, and ~28.6 GFLOPs total compute.

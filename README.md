@@ -50,16 +50,4 @@ Double-Buffering prevents the crossbar from stalling, and chunk-based tiling ens
 Scaling PEs, clock speed, or parallel crossbars can bring throughput to the level required for real-time YOLOv8.
 This combined code plus diagram demonstrates how you can implement a “full” YOLO pipeline (in simplified form) on your system, using pipeline scheduling for each stage and your crossbar PE code to handle the actual 16-bit MAC operations for each convolution layer.
 
-[ S0: INPUT FETCH ] ---> [ S1: CONV on Crossbar ] ---> [ S2: ACT (ReLU/Leaky) ] 
-       ^                           |                             |
-       |                           v                             v
-       |                    [ S3: INTER-LAYER TRANSFER ] --------+
-       |                           |  (to next layer input)
-       |                           v
-       |-----------------> [S1: CONV (Layer2)] ---> [S2: ACT (Layer2)] 
-                                     |                   |
-                                     v                   v
-                             [ S3: Transfer -> Detection ]
-                                     |
-                                     v
-                            [ S4: DET+NMS (final) ]
+![image](https://github.com/user-attachments/assets/952bf573-32ff-4356-8a2c-f7d07b7035d2)

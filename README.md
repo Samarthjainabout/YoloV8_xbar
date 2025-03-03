@@ -40,7 +40,7 @@ Nonetheless, the same principle (pipelined chunking, or tiling) extends to the e
    
 ![image](https://github.com/user-attachments/assets/952bf573-32ff-4356-8a2c-f7d07b7035d2)
 
-4. Estimating Performance vs. 30 ms Target
+3. Estimating Performance vs. 30 ms Target
 YOLOv8s requires ~28.6 GFLOPs for a 640×640 input.
 At 500 MHz (worst case) with 5–8 PEs, you can approach tens of billions of MACs per second if everything is fully pipelined (all crossbar PEs busy). For instance, at 500 MHz × 256 parallel MACs per crossbar = 128 GMAC/s per PE, times 5 PEs = 640 GMAC/s peak, i.e. 0.64 TOPS. This is borderline to meet 28.6 GFLOPs in ~30 ms (which needs ~0.953 TFLOPs). But with more PEs or a faster clock (1 GHz, 8+ PEs), you can surpass 1 TOPS to comfortably hit ~30 ms.
 The pipeline ensures minimal idle time on the crossbar. Double‑buffering ensures data fetch overlaps with compute. Summarily, you can expect near peak utilization.

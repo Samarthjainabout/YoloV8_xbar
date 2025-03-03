@@ -81,3 +81,12 @@ Pipelined Scheduling with S0–S3 ensures continuous data movement and concurren
 Double-Buffering prevents the crossbar from stalling, and chunk-based tiling ensures memory usage is manageable.
 Scaling PEs, clock speed, or parallel crossbars can bring throughput to the level required for real-time YOLOv8.
 This combined code plus diagram demonstrates how you can implement a “full” YOLO pipeline (in simplified form) on your system, using pipeline scheduling for each stage and your crossbar PE code to handle the actual 16-bit MAC operations for each convolution layer.
+
+**References**
+
+1.	Escher: A CNN Accelerator with Flexible Buffering to Minimize Off-Chip Transfer | IEEE Conference Publication | IEEE Xplore. https://ieeexplore.ieee.org/document/7966659.
+   
+2.	Chen, Y.-H., Krishna, T., Emer, J. S. & Sze, V. Eyeriss: An Energy-Efficient Reconfigurable Accelerator for Deep Convolutional Neural Networks. IEEE J. Solid-State Circuits 52, 127–138 (2017).
+   
+3.	PowerYOLO: Mixed Precision Model for Hardware Efficient Object Detection with Event Data. ResearchGate https://www.researchgate.net/publication/382177545_PowerYOLO_Mixed_Precision_Model_for_Hardware_Efficient_Object_Detection_with_Event_Data.
+

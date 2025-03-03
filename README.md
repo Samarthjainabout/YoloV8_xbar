@@ -1,3 +1,16 @@
+Network-on-Chip (NoC) Design Document for PE-Based Accelerator
+1. Overview
+This document outlines the NoC design for connecting multiple Processing Elements (PEs) in a 2D mesh topology to support real-time YOLOv8s inference. The NoC is designed to ensure low-latency, high-bandwidth communication, avoiding bottlenecks while scaling beyond 8 PEs. It also includes roadmap phases for future improvements.
+2. PE Design Requirements
+When you multiply two 16-bit numbers using nibble decomposition, you split each 16 -bit number into four 4 -bit nibbles. Denote the weight as
+W={w_0,w_1,w_2,w_3 }  " "(with" " w_0 " " the most significant nibble)" " 
+and the input as
+X={x_0,x_1,x_2,x_3 }
+A full multiplication is given by
+W×X=∑_(i=0)^3▒  ∑_(j=0)^3▒  [(w_i×x_j )≪(4×((3-i)+(3-j)))]
+That is, you must compute 16 partial products corresponding to each combination of an input nibble with a weight nibble
+
+
 Below is an illustrative end-to-end example showing how you might integrate the PE crossbar code (for 16‑bit nibble‑based multiplication) into a pipelined YOLOv8s inference flow on a system with multiple PEs, static XY routing, and a 2D mesh topology. Because a true YOLOv8s implementation is very large (dozens of layers, with residual connections and multi‑scale heads), the code below is a conceptual / toy prototype. It demonstrates how pipeline scheduling (Stages S0–S4) can be combined with PE crossbar multiplication in a manner that meets the approximate target of ~30 ms latency for 640×640 input, given 5–8 PEs, 500 MHz–1 GHz clock, and ~28.6 GFLOPs total compute.
 
 The goal is to show where in the pipeline your existing PE crossbar code slots in (specifically in the convolution stages), as well as how intermediate results flow stage by stage. This also demonstrates double‑buffering and how bounding box decode / NMS can run after the main convolution layers have finished.

@@ -1,0 +1,265 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+###############################################################################
+# (A) Crossbar PE Setup (from your code)
+###############################################################################
+
+def split_16bit(x):
+    """
+    Splits a 16-bit integer into four 4-bit nibbles.
+    Returns a list: [nibble0 (MSB), nibble1, nibble2, nibble3 (LSB)]
+    """
+    return [(x >> 12) & 0xF, (x >> 8) & 0xF, (x >> 4) & 0xF, x & 0xF]
+
+# Parameters for a single crossbar:
+num_rows = 32
+num_weight_cells = 8
+num_crossbar_cols = num_weight_cells * 4  # = 32
+
+# Build a random 16-bit weight array for demonstration:
+np.random.seed(42)
+weight_array = np.random.randint(0, 0x10000, size=(num_rows, num_weight_cells), dtype=np.uint16)
+
+# Convert the 16-bit weight array into 4-bit nibbles, stored in a 32x32 matrix:
+crossbar = np.zeros((num_rows, num_crossbar_cols), dtype=np.int64)
+for i in range(num_rows):
+    for j in range(num_weight_cells):
+        nibbles = split_16bit(int(weight_array[i, j]))
+        crossbar[i, j*4:(j+1)*4] = nibbles
+
+print("Crossbar (32x32) loaded with 4-bit nibble weights.\n")
+
+
+def crossbar_conv_16bitMAC(input_stream_16bit):
+    """
+    Example function that uses your nibble-based crossbar code to perform
+    a 'full 16-bit multiplication + accumulate' for one set of input rows.
+
+    input_stream_16bit: array of shape (32,) representing 16-bit input for each of 32 rows.
+    Returns the 8 weight cell accumulations (since each row has 8 weight cells).
+    """
+    final_weight_cell_outputs = np.zeros(num_weight_cells, dtype=np.int64)
+
+    # For each row of crossbar:
+    for row in range(num_rows):
+        # Nibbles of the row input
+        input_nibs = split_16bit(int(input_stream_16bit[row]))
+        for cell in range(num_weight_cells):
+            # Weight nibs for that cell
+            weight_nibs = split_16bit(int(weight_array[row, cell]))
+            product = 0
+            # Compute all cross terms
+            for i in range(4):
+                for j in range(4):
+                    shift = (4 * (3 - i)) + (4 * (3 - j))
+                    product += (input_nibs[i] * weight_nibs[j]) << shift
+            final_weight_cell_outputs[cell] += product
+
+    return final_weight_cell_outputs
+
+
+###############################################################################
+# (B) Pipelined YOLO Inference Simulation
+###############################################################################
+# For demonstration, let's define a 2-layer YOLO-like flow:
+#   - Layer1: Convolution (S1) -> ReLU (S2)
+#   - Layer2: Convolution (S1) -> Leaky ReLU (S2)
+#   - Then detection head that produces bounding boxes -> S4 for NMS
+#
+# We'll pipeline the data in 'tiles' (chunks) across these stages, using
+# the timeline approach from your pipeline code. We assume S0 fetches input tile
+# from DRAM, S1 calls crossbar_conv_16bitMAC(...) to run the conv, S2 applies
+# activation, S3 transfers data to the next layer's input, etc.
+###############################################################################
+
+# ---------------
+# Stage times (toy example, in 'cycles' or abstract time units):
+t0 = 2  # input fetch
+t1 = 5  # conv on crossbar
+t2 = 1  # activation
+t3 = 1  # transfer
+t4 = 4  # NMS or final detection
+
+# We'll simulate 1 image processed in e.g. 5 chunks (just for demonstration)
+num_images = 1
+chunks_per_image = 5
+
+# Timers: when each stage is free
+stage0_free = stage1_free = stage2_free = stage3_free = stage4_free = 0
+pending_chunk = 0  # double-buffer capacity (0 or 1)
+
+# We define a minimal function that 'simulates' the conv with the crossbar
+# for each chunk, reusing crossbar_conv_16bitMAC. We won't do real feature
+# map shapes, but just illustrate.
+def simulate_conv_crossbar(chunk_id):
+    """
+    This function stands in for the actual convolution on the crossbar PEs.
+    We'll generate a random 16-bit input_stream for each chunk, call
+    crossbar_conv_16bitMAC, and produce an output result.
+    """
+    # Fake 32-row input for the chunk:
+    fake_input_stream = np.random.randint(0, 0x10000, size=(32,), dtype=np.uint16)
+    outputs = crossbar_conv_16bitMAC(fake_input_stream)
+    # We won't store outputs in detail, just return an array representing them
+    return outputs
+
+def activation_stage(conv_outputs, act_type='relu'):
+    """
+    Fake activation function (int8, etc.).
+    In a real design, this would be fused in hardware or done per-PE.
+    We'll just clamp or do leaky ReLU in Python to illustrate.
+    """
+    if act_type == 'relu':
+        # zero out negative values
+        conv_outputs = np.maximum(conv_outputs, 0)
+    elif act_type == 'leaky_relu':
+        # keep a small slope for negatives
+        neg_mask = (conv_outputs < 0)
+        conv_outputs[neg_mask] = (conv_outputs[neg_mask] >> 3)  # e.g. /8
+    return conv_outputs
+
+def transfer_stage(act_outputs):
+    """
+    Transfer to next layer or final detection logic.
+    We'll just pass them along in a placeholder data structure.
+    """
+    # Could simulate partial sums or partial FM, but we'll keep it simple
+    return act_outputs
+
+def detection_stage(feature_map):
+    """
+    Dummy YOLO detection head, returning some bounding boxes, which we feed into NMS.
+    We'll just produce random boxes to show the pipeline structure.
+    """
+    # In real YOLO, you'd do a final conv on feature_map. We'll skip details.
+    boxes = []
+    # Generate a few random bounding boxes
+    for _ in range(4):
+        x1, y1 = np.random.randint(0, 640, size=2)
+        w, h = np.random.randint(1, 200, size=2)
+        x2, y2 = min(x1 + w, 639), min(y1 + h, 639)
+        score = np.random.rand()
+        cls_id = np.random.randint(0, 80)  # 80 classes
+        boxes.append((x1, y1, x2, y2, score, cls_id))
+    return boxes
+
+def nms_stage(boxes):
+    """
+    Final bounding box NMS.
+    Here we do a simple threshold on box overlap (IoU).
+    We'll keep it short to illustrate the pipeline stage.
+    """
+    if not boxes:
+        return []
+    # Sort by score descending
+    boxes_sorted = sorted(boxes, key=lambda b: b[4], reverse=True)
+    final = []
+    for box in boxes_sorted:
+        x1, y1, x2, y2, sc, cid = box
+        keep = True
+        for fb in final:
+            fx1, fy1, fx2, fy2, fsc, fcid = fb
+            # IoU check
+            inter_x1 = max(x1, fx1)
+            inter_y1 = max(y1, fy1)
+            inter_x2 = min(x2, fx2)
+            inter_y2 = min(y2, fy2)
+            inter_area = max(0, inter_x2 - inter_x1 + 1) * max(0, inter_y2 - inter_y1 + 1)
+            area1 = (x2 - x1 + 1)*(y2 - y1 + 1)
+            area2 = (fx2 - fx1 + 1)*(fy2 - fy1 + 1)
+            iou = inter_area / float(area1 + area2 - inter_area + 1e-5)
+            if iou > 0.3:
+                keep = False
+                break
+        if keep:
+            final.append(box)
+    return final
+
+# We'll define a 2-layer YOLO pipeline: (Conv1->ReLU), (Conv2->LeakyReLU), then detect->NMS
+# For each chunk, S1 does conv on crossbar, S2 does activation, S3 transfers to next layer.
+# After the final chunk, we do detection + NMS in S4.
+
+print("\n--- Simulating Pipelined YOLO Inference (Toy Example) ---\n")
+for img in range(num_images):
+    print(f"Processing Image {img+1}...\n")
+    # We'll store partial results to simulate the pipeline.
+    # For each chunk, we run "layer 1" then "layer 2"
+    # We'll keep it short, reusing the pipeline timeline approach.
+    for chunk in range(chunks_per_image):
+
+        # Stage0: Input fetch
+        if pending_chunk >= 1:
+            start0 = max(stage0_free, stage1_free)
+        else:
+            start0 = stage0_free
+        end0 = start0 + t0
+        print(f"[S0] Fetching chunk{chunk} from t={start0} to t={end0}")
+        stage0_free = end0
+        pending_chunk += 1
+
+        # Stage1: Convolution (Layer1 on crossbar)
+        start1 = max(stage1_free, end0)
+        if start1 > end0:
+            print(f"   (chunk{chunk} waited in buffer from t={end0} to t={start1} for S1)")
+        end1 = start1 + t1
+        print(f"[S1] Convolution(L1) chunk{chunk} from t={start1} to t={end1}")
+        # Actually do the crossbar conv:
+        conv1_out = simulate_conv_crossbar(chunk)
+        stage1_free = end1
+        pending_chunk -= 1
+
+        # Stage2: Activation(L1) ReLU
+        start2 = max(stage2_free, end1)
+        end2 = start2 + t2
+        print(f"[S2] Activation(L1) chunk{chunk} from t={start2} to t={end2}")
+        conv1_act = activation_stage(conv1_out, act_type='relu')
+        stage2_free = end2
+
+        # Stage3: Transfer -> Next layer's input
+        start3 = max(stage3_free, end2)
+        end3 = start3 + t3
+        print(f"[S3] Transfer(L1->L2) chunk{chunk} from t={start3} to t={end3}")
+        layer2_input = transfer_stage(conv1_act)
+        stage3_free = end3
+
+        # For demonstration, we do the second layer *immediately* on the same chunk,
+        # effectively extending pipeline. In reality, you might pipeline L1 and L2 across chunks.
+        # (We'll do it inline here for clarity.)
+
+        # Stage1 again for L2 (Conv)
+        # We can reuse stage1 timeline to represent the second conv. In real pipeline code,
+        # you'd track separate timeline or same resource if we only have 1 conv engine.
+        start1_b = max(stage1_free, end3)
+        end1_b = start1_b + t1
+        print(f"   [S1/L2] Convolution(L2) chunk{chunk} from t={start1_b} to t={end1_b}")
+        conv2_out = simulate_conv_crossbar(chunk)  # new crossbar op for L2
+        stage1_free = end1_b
+
+        # Stage2 for L2 activation (LeakyReLU)
+        start2_b = max(stage2_free, end1_b)
+        end2_b = start2_b + t2
+        print(f"   [S2/L2] Activation(L2) chunk{chunk} from t={start2_b} to t={end2_b}")
+        conv2_act = activation_stage(conv2_out, act_type='leaky_relu')
+        stage2_free = end2_b
+
+        # Stage3: Transfer -> detection head
+        start3_b = max(stage3_free, end2_b)
+        end3_b = start3_b + t3
+        print(f"   [S3/L2->Det] Transfer chunk{chunk} from t={start3_b} to t={end3_b}\n")
+        det_input = transfer_stage(conv2_act)
+        stage3_free = end3_b
+
+    # After all chunks for this image:
+    # Stage4: detection + NMS
+    start4 = max(stage4_free, stage3_free)
+    end4 = start4 + t4
+    print(f"[S4] Detection + NMS for Image{img+1} from t={start4} to t={end4}")
+    # Actually run detection + NMS
+    # In real YOLO, we'd combine the partial chunks. Here we just produce random boxes:
+    bounding_boxes = detection_stage(None)
+    final_detections = nms_stage(bounding_boxes)
+    print(f"   Final BBoxes (Image{img+1}): {final_detections}\n")
+    stage4_free = end4
+
+print("\n--- End of YOLO Pipeline Simulation ---\n")

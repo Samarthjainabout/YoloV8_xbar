@@ -1,5 +1,7 @@
 
 ![image](https://github.com/user-attachments/assets/55202b60-d75a-40ab-bac6-5051e26584b6)
+
+
 Total Clock Cycles per Full 16-bit MAC: 16 clocks
 (One clock cycle for each of the 16 unique nibble pairings.)
 How It Works in the Crossbar:
